@@ -1,0 +1,10 @@
+#*#
+*~
+*.log
+config/*.conf
+
+# Bundler ignorance rules
+# vendor/cache is ignored but may contain version controled gems.
+vendor/
+.bundle/
+Gemfile.lock

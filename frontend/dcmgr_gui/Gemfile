@@ -1,0 +1,25 @@
+source 'https://rubygems.org'
+
+gem 'rails', '3.0.20'
+gem 'sequel','3.47.0'
+gem 'json'
+gem 'oauth','0.4.7'
+gem 'rake', '~> 10.1.0'
+gem 'thor'
+gem 'mysql2','~> 0.3.14'
+gem 'ripl'
+gem 'rack-cors', :require => 'rack/cors'
+
+# we have client/ruby-hijiki directory in development environment.
+# so we use the local version of hijiki during development.
+hijiki_root=File.expand_path('../../../client/ruby-hijiki/', __FILE__)
+if File.exists?(hijiki_root)
+  gem 'ruby-hijiki', :path=>hijiki_root
+else
+  gem 'ruby-hijiki', '0.0.3'
+end
+
+group :production do
+  gem 'unicorn', '4.7.0'
+  gem "unicorn-worker-killer", "~> 0.4.2"
+end

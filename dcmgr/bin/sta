@@ -1,0 +1,38 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+
+require 'dcmgr/rubygems'
+require 'dcmgr'
+require 'isono'
+require 'fuguta'
+require 'socket'
+
+include Isono::Runner::RpcServer
+include Dcmgr::Logger
+
+Dcmgr::Configurations.load Dcmgr::Configurations::Sta
+
+Dcmgr.run_initializers('logger')
+
+logger.info "Driver configuration: backing store=%s, target=%s" % [
+  Dcmgr::Configurations.sta.backing_store_driver,
+  Dcmgr::Configurations.sta.iscsi_target_driver
+]
+
+manifest = Isono::Runner::RpcServer::DEFAULT_MANIFEST.dup
+manifest.instance_eval do
+  node_name 'sta'
+  node_instance_id "#{Socket.gethostname}"
+
+  load_module Isono::NodeModules::NodeHeartbeat
+end
+
+Isono.at_disconnected do
+  EM.stop { exit }
+end
+
+start(manifest) do
+  endpoint "sta-handle.#{@node.node_id}", Dcmgr::Rpc::StaHandler
+end

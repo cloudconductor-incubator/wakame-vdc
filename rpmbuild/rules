@@ -1,0 +1,138 @@
+#!/usr/bin/make -f
+
+# should be in wakame-vdc
+CURDIR ?= $(PWD)
+RUBYDIR ?= $(CURDIR)/ruby
+
+VDC_VERSION_TAG ?=
+VDC_RELEASE_TAG ?=
+VDC_BUILD_ID  ?= HEAD
+VDC_REPO_URI  ?= git://github.com/axsh/wakame-vdc.git
+VDC_SPEC_BASE := rpmbuild/SPECS/wakame-vdc.spec
+VDC_SPEC_SUBS := rpmbuild/SPECS/wakame-vdc-example-1box.spec
+VDC_SPEC_INIT := rpmbuild/SPECS/wakame-init.spec
+
+RPM_BUILD_ROOT ?= $(CURDIR)/rpmbuild/wakame-vdc
+RPMBUILD_CMD  ?= rpmbuild
+RPMBUILD_OPTS := --target=`arch`
+RPMCLEAN_SPEC := $(VDC_SPEC_BASE)
+RPMBUILD_SPEC := $(VDC_SPEC_BASE) $(VDC_SPEC_SUBS) $(VDC_SPEC_INIT)
+
+# .deb
+#TMP_INSTALL_ROOT ?= debian/wakame-vdc
+# .rpm
+TMP_INSTALL_ROOT ?=
+
+VDC_INSTALL_ROOT ?= /opt/axsh/wakame-vdc
+
+PATH := $(RUBYDIR)/bin:${PATH}
+export PATH
+
+build: build-stamp
+build-stamp: ruby-build bundle-install
+	touch $@
+ruby-build:
+	yum search wakame-vdc-ruby | egrep -q wakame-vdc-ruby && { yum install -y wakame-vdc-ruby; } || { CURDIR=${CURDIR} make build; }
+
+bundle-install: bundle-install-stamp
+bundle-install-stamp:
+	# Use hijiki gem in local since the local version is the latest.
+	mkdir -p $(CURDIR)/vendor/cache
+	(cd $(CURDIR)/client/ruby-hijiki && rake gem && mv pkg/ruby-hijiki-*.gem $(CURDIR)/vendor/cache)
+	(cd $(CURDIR)/frontend/dcmgr_gui && rm -rf vendor/cache && mkdir -p vendor && ln -fs ../../../vendor/cache vendor/)
+
+	# Use dolphin_client gem in local since the local version is the latest.
+	(cd $(CURDIR)/client/dolphin && gem build ./dolphin_client.gemspec && cp dolphin_client-*.gem $(CURDIR)/dcmgr/vendor/cache)
+
+	# Use metric_libs gem in local since the local version is the latest.
+	(cd $(CURDIR)/metric_libs && gem build ./metric_libs.gemspec && cp metric_libs-*.gem $(CURDIR)/dcmgr/vendor/cache)
+
+	mkdir -p $(CURDIR)/vdc-fluentd/vendor/cache
+	(cp $(CURDIR)/client/dolphin/dolphin_client-*.gem $(CURDIR)/vdc-fluentd/vendor/cache)
+	(cp $(CURDIR)/metric_libs/metric_libs-*.gem $(CURDIR)/vdc-fluentd/vendor/cache)
+
+	mkdir -p $(CURDIR)/vendor/bundle/ruby
+	# in order to build rpm, client(ruby-hijiki)/ is no need.
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/client/ruby-hijiki $(CURDIR)/client/ruby-hijiki.saved
+
+	# in order to build rpm, client(dolphin_client)/ is no need.
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/client/dolphin $(CURDIR)/client/dolphin.saved
+
+	# in order to build rpm, metric_libs/ is no need.
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/metric_libs $(CURDIR)/metric_libs.saved
+	(cd $(CURDIR)/dcmgr              && rm -rf vendor/bundle && mkdir -p vendor/bundle && ln -fs    ../../../vendor/bundle/ruby vendor/bundle/ && bundle install --standalone --path vendor/bundle --without with_esxi)
+	(cd $(CURDIR)/frontend/dcmgr_gui && rm -rf vendor/bundle && mkdir -p vendor/bundle && ln -fs ../../../../vendor/bundle/ruby vendor/bundle/ && bundle install --standalone --path vendor/bundle)
+	(cd $(CURDIR)/frontend/admin     && rm -rf vendor/bundle && mkdir -p vendor/bundle && ln -fs ../../../../vendor/bundle/ruby vendor/bundle/ && bundle install --standalone --path vendor/bundle)
+	(cd $(CURDIR)/dolphin            && rm -rf vendor/bundle && mkdir -p vendor/bundle && ln -fs    ../../../vendor/bundle/ruby vendor/bundle/ && bundle install --standalone --path vendor/bundle)
+	(cd $(CURDIR)/vdc-fluentd        && rm -rf vendor/bundle && mkdir -p vendor/bundle && ln -fs    ../../../vendor/bundle/ruby vendor/bundle/ && PKGBUILD=1 bundle install --standalone --path vendor/bundle)
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/client/ruby-hijiki.saved $(CURDIR)/client/ruby-hijiki
+
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/client/dolphin.saved $(CURDIR)/client/dolphin
+
+	[ "$(RUBYDIR)" = "$(CURDIR)/ruby" ] || mv $(CURDIR)/metric_libs.saved $(CURDIR)/metric_libs
+
+	touch $@
+
+clean:
+	rm -rf $(CURDIR)/vendor/bundle
+	rm -f $(CURDIR)/bundle-install-stamp
+	$(RPMBUILD_CMD) --clean $(RPMBUILD_OPTS) $(RPMCLEAN_SPEC)
+	rm -f build-stamp
+
+install: build
+	# force to rewrite path info in text files.
+	fgrep -m 1 -r $(CURDIR) $(CURDIR)/$(TMP_INSTALL_ROOT) | \
+	  grep -v '^Binary file' | \
+	  awk -F: '{print $$1}' | \
+	  while read -r i; do \
+	    echo $$i; \
+	    cp -p $$i $$i.sed ;\
+	    sed -e 's|$(CURDIR)|$(VDC_INSTALL_ROOT)|g' < $$i > $$i.sed ;\
+	    mv $$i.sed $$i ;\
+	  done
+	# clean conf files from base package
+	rm -f $(CURDIR)/$(TMP_INSTALL_ROOT)/$(VDC_INSTALL_ROOT)/dcmgr/config/*.conf
+	rm -f $(CURDIR)/$(TMP_INSTALL_ROOT)/$(VDC_INSTALL_ROOT)/dcmgr/config/*.yml
+	rm -f $(CURDIR)/$(TMP_INSTALL_ROOT)/$(VDC_INSTALL_ROOT)/frontend/dcmgr_gui/config/*.yml
+	rm -f $(CURDIR)/$(TMP_INSTALL_ROOT)/$(VDC_INSTALL_ROOT)/frontend/admin/config/*.yml
+
+	# replace /usr/bin/ruby shebangs.
+	# unicorn shebang: /this/will/be/overwritten/or/wrapped/anyways/do/not/worry/ruby
+	# statemachine: /opt/local/bin/ruby
+	egrep -m 1 -r '^#!.*/ruby'  $(CURDIR) | \
+	  grep -v '^Binary file' | \
+	  awk -F: '{print $$1}' | \
+	  while read -r i; do \
+	    echo $$i; \
+	    cp -p $$i $$i.sed ;\
+	    sed -e 's|^#!.*/ruby|#!$(VDC_INSTALL_ROOT)/ruby/bin/ruby|g' < $$i > $$i.sed ;\
+	    mv $$i.sed $$i ;\
+	  done
+	# replace "/usr/bin/env ruby" shebangs.
+	egrep -m 1 -r '^#!/usr/bin/env ruby'  $(CURDIR) | \
+	  grep -v '^Binary file' | \
+	  awk -F: '{print $$1}' | \
+	  while read -r i; do \
+	    echo $$i; \
+	    cp -p $$i $$i.sed ;\
+	    sed -e 's|^#!/usr/bin/env ruby|#!$(VDC_INSTALL_ROOT)/ruby/bin/ruby|g' < $$i > $$i.sed ;\
+	    mv $$i.sed $$i ;\
+	  done
+
+binary-indep: build install
+
+binary-arch: build install
+	# overwrite RPATH in binaries.
+	# chrpath exits non-zero value if fails to replace RPATH. it can be ignored.
+	find $(CURDIR)/$(TMP_INSTALL_ROOT)/ -type f -name "*.so" | \
+	  while read -r i; do \
+	    (file -b "$$i" | grep -q '^ELF ' > /dev/null) && chrpath --replace $(VDC_INSTALL_ROOT)/ruby/lib "$$i" || : ;\
+	  done
+
+binary:
+	$(RPMBUILD_CMD) -bb $(RPMBUILD_OPTS) $(RPMBUILD_SPEC)
+
+binary-snap:
+	$(RPMBUILD_CMD) -bb $(RPMBUILD_OPTS) $(RPMBUILD_SPEC) --define "build_id $$(rpmbuild/helpers/gen-release-id.sh $(VDC_BUILD_ID))" --define "repo_uri $(VDC_REPO_URI)" --define "version_tag $(VDC_VERSION_TAG)" --define "release_tag $(VDC_RELEASE_TAG)"
+
+.PHONY: build clean binary-indep binary-arch binary binary-snap install ruby-build bundle-install

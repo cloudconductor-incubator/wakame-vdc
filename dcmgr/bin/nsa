@@ -1,0 +1,218 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+#
+# Naming Service Agent:
+# This agent aims to configure DNS/DHCP daemons or devices to supply
+# IP address and Hostname for Instances.
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+
+require 'dcmgr/rubygems'
+require 'dcmgr'
+require 'isono'
+
+require 'erb'
+require 'eventmachine'
+require 'ipaddress'
+require 'socket'
+
+class SuperviseDnsmasq < Isono::NodeModules::Base
+  include Dcmgr::Logger
+
+  config_section do
+    desc "configuration file for dnsmasq dhcp"
+    dhcp_hosts_conf File.expand_path('dnsmasq-dhcp.conf', '/var/tmp/')
+  end
+
+  initialize_hook do
+    if !manifest.config.enable_dnsmasq
+      logger.info "Dnsmasq is disabled."
+      next
+    end
+
+    if manifest.config.network_name.nil?
+      abort("network_name is not set yet in nsa.conf")
+    else
+      logger.info "network_name: #{manifest.config.network_name}"
+    end
+
+    # check the dnsmasq binary version
+    @conf_ver_253 = false
+    if `#{manifest.config.dnsmasq_bin_path} -version`.split("\n").first =~ /Dnsmasq version ([\d\.]+)/
+      verstr = $1.split('.')
+      if verstr[0].to_i == 2 && verstr[1].to_i >= 53
+        @conf_ver_253 = true
+      end
+      logger.info("Using dnsmasq v#{verstr}: configuration version #{@conf_ver_253 ? '>= 2.53' : '< 2.53'}")
+    else
+      logger.warn("Failed to detect dnsmasq binary version")
+    end
+
+    myinstance.start_dnsmasq
+    myinstance.refresh_dnsmasq_conf
+
+    event = Isono::NodeModules::EventChannel.new(node)
+
+    event.subscribe('instance.scheduled', '#') do |args|
+      logger.info("refresh on instance.scheduled: #{args.inspect}")
+      myinstance.refresh_dnsmasq_conf
+    end
+
+    event.subscribe('hva/instance_terminated', '#') do |args|
+      logger.info("refresh on instance_terminated: #{args.inspect}")
+      myinstance.restart_dnsmasq
+    end
+  end
+
+  terminate_hook do
+    system("/bin/kill #{@dnsmasq_pid}") if manifest.config.enable_dnsmasq
+  end
+
+  def start_dnsmasq
+    logger.debug "start_dnsmasq begin"
+    opts = sprintf("-k --no-hosts --no-resolv --leasefile-ro --dhcp-leasefile=/dev/null " +
+                   "--addn-hosts=%s --dhcp-hostsfile=%s --conf-file=%s",
+                   config_section.dhcp_hosts_conf + ".hosts",
+                   config_section.dhcp_hosts_conf + ".dhcp",
+                   config_section.dhcp_hosts_conf
+                   )
+    @cmd = "#{manifest.config.dnsmasq_bin_path} #{opts}"
+
+    @dnsmasq_pid = fork {
+      Process.exec(@cmd)
+    }
+    begin
+      if !Process.waitpid(@dnsmasq_pid, Process::WNOHANG).nil?
+        abort("dnsmasq is terminated unexpectedly")
+      end
+    rescue Errno::ECHILD
+      abort("Failed to exec dnsmasq process.")
+    end
+  end
+
+  def restart_dnsmasq
+    EM.defer {
+      begin
+        generate_dhcp_conf()
+        if Process.waitpid(@dnsmasq_pid, Process::WNOHANG).nil?
+          # need to kill process in order to flush ip lease data.
+          system("/bin/kill #{@dnsmasq_pid}")
+        end
+        start_dnsmasq
+        logger.info("restart dnsmasq conf")
+      rescue Exception => e
+        logger.error(e)
+      end
+    }
+  end
+
+  def refresh_dnsmasq_conf
+    EM.defer {
+      begin
+        generate_dhcp_conf()
+        if Process.waitpid(@dnsmasq_pid, Process::WNOHANG).nil?
+          system("/bin/kill -HUP #{@dnsmasq_pid}")
+        else
+          @dnsmasq_pid = fork {
+            Process.exec(@cmd)
+          }
+        end
+        logger.info("refreshed dnsmasq conf")
+      rescue Exception => e
+        logger.error(e)
+      end
+    }
+  end
+
+  def generate_dhcp_conf
+    rpc = Isono::NodeModules::RpcChannel.new(node)
+    # load entier macaddr,ipaddr pairs for all instances from collector.
+    confdata = rpc.request('hva-collector', 'get_dhcp_conf', manifest.config.network_name)
+
+    render_conf(config_section.dhcp_hosts_conf, binding, <<'_EOS_')
+server=8.8.8.8
+log-facility=/var/log/dnsmasq.log
+#log-queries
+log-dhcp
+<%- confdata.each { |nwid, v| -%>
+<%- if @conf_ver_253 -%>
+dhcp-range=set:<%= nwid %>,<%= v[:ipv4_first] %>,static,<%= v[:netmask] %>
+dhcp-option=tag:<%= nwid %>,option:netmask,<%= v[:netmask] %>
+dhcp-option=tag:<%= nwid %>,option:router,<%= v[:ipv4_gw] %>
+dhcp-option=tag:<%= nwid %>,option:dns-server,<%= v[:dns_server] %>
+dhcp-option=tag:<%= nwid %>,option:domain-name,<%= v[:domain_name] %>
+#dhcp-option=tag:<%= nwid %>,option:domain-search,<%= v[:domain_name] %>
+<%- else # if @conf_ver_253 -%>
+dhcp-range=net:<%= nwid %>,<%= v[:ipv4_first] %>,static,<%= v[:netmask] %>
+dhcp-option=<%= nwid %>,option:netmask,<%= v[:netmask] %>
+<%- if not v[:ipv4_gw].nil? -%>
+dhcp-option=<%= nwid %>,option:router,<%= v[:ipv4_gw] %>
+<%- end -%>
+<%- if not v[:dns_server].nil? -%>
+dhcp-option=<%= nwid %>,option:dns-server,<%= v[:dns_server] %>
+<%- end -%>
+dhcp-option=<%= nwid %>,option:domain-name,<%= v[:domain_name] %>
+#dhcp-option=<%= nwid %>,option:domain-search,<%= v[:domain_name] %>
+<%- end # if @conf_ver_253 -%>
+<%- v[:mac2addr].each { |i| -%>
+#dhcp-host=<%= i[:mac_addr] %>,net:<%= nwid %>,<%= i[:ipaddr] %>
+<%- } -%>
+<%- v[:addr2host].each { |i| -%>
+#address=/<%= i[:hostname] %>/<%= i[:ipaddr] %>
+<%- } -%>
+<%- } -%>
+_EOS_
+
+    render_conf(config_section.dhcp_hosts_conf + ".dhcp", binding, <<'_EOS_')
+<%- confdata.each { |nwid, v| -%>
+<%-   v[:mac2addr].each { |i| -%>
+<%= i[:mac_addr] %>,net:<%= nwid %>,<%= i[:ipaddr] %>,infinite
+<%-   } -%>
+<%- } -%>
+_EOS_
+
+    render_conf(config_section.dhcp_hosts_conf + ".hosts", binding, <<'_EOS_')
+<%- confdata.each { |nwid, v| -%>
+<%-   v[:addr2host].each { |i| -%>
+<%= i[:ipaddr] %>  <%= i[:hostname] %>
+<%-   } -%>
+<%- } -%>
+_EOS_
+  end
+
+  private
+  def render_conf(file, bind, templ)
+    File.open(file, 'w') { |f|
+      f << ERB.new(templ, nil, '-').result(bind)
+    }
+  end
+end
+
+include Isono::Runner::RpcServer
+
+# FIXME: use Dcmgr::Initializer and Dcmgr::Confiuraiton.
+load File.expand_path('../../config/initializers/logger.rb', __FILE__)
+
+manifest = DEFAULT_MANIFEST.dup
+manifest.instance_eval do
+  node_name 'nsa'
+  node_instance_id "#{Socket.gethostname}"
+  load_module Isono::NodeModules::NodeHeartbeat
+  load_module SuperviseDnsmasq
+
+  config do |c|
+    c.dnsmasq_bin_path = '/usr/sbin/dnsmasq'
+    c.network_name = nil
+    c.enable_dnsmasq = true
+  end
+
+  path = [ENV['CONF_PATH'].to_s, '/etc/wakame-vdc/nsa.conf', File.expand_path('config/nsa.conf', Dcmgr::DCMGR_ROOT)].find { |i| File.exists?(i) }
+  load_config File.expand_path(path, app_root)
+end
+
+Isono.at_disconnected do
+  EM.stop { exit }
+end
+
+start(manifest) do
+end

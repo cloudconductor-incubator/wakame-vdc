@@ -1,0 +1,2 @@
+DcmgrGUI.prototype.accountPanel = function(){
+};

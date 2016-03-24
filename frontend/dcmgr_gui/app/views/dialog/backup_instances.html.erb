@@ -1,0 +1,23 @@
+<div id="backup_instances_dialog">
+  <div class="message">
+    <p><%= t("dialog.backup_instances.message") %></p>
+  </div>
+  <table>
+    <tr>
+      <td><%= t("dialog.backup_instances.instance_id")%>: </td>
+      <td><%= @instance_id %></td>
+      <input type="hidden" id="instance_id" name="instance_id" value="<%= @instance_id %>">
+    </tr>
+  </table>
+  <br>
+  <table>
+    <tr>
+      <td><%= t("dialog.backup_instances.backup_display_name")%>: </td>
+      <td><input id="backup_display_name" name="backup_display_name" type="text" size="43" value=""></td>
+    </tr>
+    <tr>
+      <td><%= t("dialog.backup_instances.image_description")%>: </td>
+      <td><input id="backup_description" name="backup_description" type="text" width="43" value=""></td>
+    </tr>
+  </table>
+</div>

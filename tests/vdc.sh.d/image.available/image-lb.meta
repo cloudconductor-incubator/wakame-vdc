@@ -1,0 +1,10 @@
+uuid=demolb
+arch=x86_64
+localname=lb-centos-openvz-md-64-stud.raw.gz
+uri=http://dlc.wakame.axsh.jp.s3.amazonaws.com/demo/vmimage/lb-centos-openvz-md-64-stud.raw.gz
+storetype=local
+file_format=raw
+container_format=gz
+root_device=label:root
+service_type=lb
+display_name=demolb

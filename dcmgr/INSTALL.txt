@@ -1,0 +1,27 @@
+
+Create database
+
+mysql -uroot
+> create database wakame_dcmgr default character set utf8;
+> grant all on wakame_dcmgr.* to wakame_dcmgr@localhost identified by 'passwd';
+
+# for test
+> create database wakame_dcmgr_test default character set utf8;
+> grant all on wakame_dcmgr_test.* to dcmgr_test@localhost identified by 'passwd';
+
+> exit
+
+Make sure to be installed rubygems (>= 1.3.6) and bundler (>= 0.9.11).
+> gem install bundler
+
+Bundle depend gems.
+
+$ bundle install
+generate .bundle/environment file
+$ bundle lock
+
+start up
+$ rake run
+
+spec
+$ rake spec

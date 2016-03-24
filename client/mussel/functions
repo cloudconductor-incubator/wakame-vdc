@@ -1,0 +1,272 @@
+# -*-Shell-script-*-
+#
+#
+#
+
+MUSSEL_PROMPT='$'
+MUSSEL_ARGS=
+MUSSEL_FRONTEND=${MUSSEL_FRONTEND:-noninteractive} # [ interactive | noninteractive ]
+CURL_OPTS_EX=
+
+function extract_args() {
+  MUSSEL_ARGS=
+  local arg= key= value= key_prefix=
+  while [[ $# != 0 ]]; do
+    arg="$1" key= value=
+    case "${arg}" in
+    --curl-opts)
+      CURL_OPTS_EX="${CURL_OPTS_EX} $2"
+      shift
+      ;;
+    --*=*)
+      key=${arg%%=*}; key=${key##--}; key=${key//-/_}
+      if echo $key | grep -qF '['; then
+        # --volumes[0][type]=xxxx --volumes[0][size]=50G
+        #  |
+        #  V
+        # volumes_curl_args="volumes[0][type]=xxxx volumes[0][size]=50G
+        key_prefix=${key%%\[*}
+        eval "${key_prefix}_args=\"\${${key_prefix}_args} ${arg##--}\""
+      else
+        value="${value} ${arg##--*=}"
+        eval "${key}=\"${value}\""; value="\${${key}}"; value=$(eval echo ${value}); eval "${key}=\"${value## }\""
+      fi
+      ;;
+    --*)
+      key=${arg##--}; key=${key//-/_}
+      case "$2" in
+      --*|"")
+        eval "${key}=1"
+        ;;
+      *)
+        value="\${${key}} $2"
+        eval "${key}=\"${value}\""; value="\${${key}}"; value=$(eval echo ${value}); eval "${key}=\"${value## }\""
+        shift
+        ;;
+      esac
+      ;;
+    *)
+      MUSSEL_ARGS="${MUSSEL_ARGS} ${arg}"
+      ;;
+    esac
+    shift
+  done
+  # trim
+  MUSSEL_ARGS=${MUSSEL_ARGS%% }
+  MUSSEL_ARGS=${MUSSEL_ARGS## }
+}
+
+function shlog() {
+  MUSSEL_LOGLEVEL=$(echo ${MUSSEL_LOGLEVEL:-info} | tr A-Z a-z)
+  MUSSEL_DRY_RUN=$(echo ${MUSSEL_DRY_RUN:-} | tr A-Z a-z)
+
+  case "${MUSSEL_LOGLEVEL}" in
+  debug)
+    echo "${MUSSEL_PROMPT} $*"
+    ;;
+  *)
+    ;;
+  esac
+
+  case "${MUSSEL_DRY_RUN}" in
+  y|yes|on|1)
+    :
+   ;;
+  *)
+    eval $*
+    ;;
+  esac
+}
+
+function curl_opts() {
+  if [[ $MUSSEL_LOGLEVEL = 'debug' ]]; then
+    CURL_OPTS_EX="${CURL_OPTS_EX} --dump-header -"
+  fi
+  echo -fsSkL $(request_header) ${CURL_OPTS_EX}
+}
+
+function request_header() {
+  if [[ -n "${account_id}" ]]; then
+    echo -H X_VDC_ACCOUNT_UUID:${account_id}
+  fi
+}
+
+function request_param() {
+  echo $*
+}
+
+function base_uri() {
+  echo ${DCMGR_BASE_URI}
+}
+
+function suffix() {
+  echo ${DCMGR_RESPONSE_FORMAT}
+}
+
+function urlencode_data() {
+  # "echo $( ... )" means removing each line \n
+  echo $(
+    while [[ "${1}" ]]; do
+      echo --data-urlencode ${1}
+      shift
+    done
+  )
+}
+
+function strfile_type() {
+  local key=$1
+  [[ -n "${key}" ]] || { echo "[ERROR] 'key' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  eval "
+   if [[ -f \"\${${key}}\" ]]; then
+     # file: key@${key}
+     echo \"${key}@\${${key}}\"
+   else
+     # str: key=${key}
+     echo \"${key}=\${${key}}\"
+   fi
+  "
+}
+
+function add_args_param() {
+  local param_key="$1"
+  [[ -n "${param_key}" ]] || { echo "[ERROR] 'param_key' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  eval "
+   [[ -n \"\${${param_key}_args}\" ]] || return 0
+
+   local i; for i in \${${param_key}_args}; do echo \$(urlencode_data \$i); done
+  "
+}
+
+function add_param() {
+  local param_key=$1 param_type=${2:-string}
+  [[ -n "${param_key}" ]] || { echo "[ERROR] 'param_key' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  eval "
+   [[ -n \"\${${param_key}}\" ]] || return 0
+
+   case \"${param_type}\" in
+    string) echo   \"${param_key}=\${${param_key}}\" ;;
+    array) local i; for i in \${${param_key}}; do echo \"${param_key}[]=\${i}\"; done ;;
+    strfile) strfile_type ${param_key}            ;;
+    strplain) echo \"\${${param_key}}\" ;;
+    hash) local i; for i in \${${param_key}}; do echo \${param_key}[\${i%%=*}]=\${i##*=}; done ;;
+   esac
+  "
+}
+
+## cmd_*
+
+function call_api() {
+  shlog curl $(curl_opts) $(request_param $*)
+}
+
+function cmd_index() {
+  local namespace=$1 cmd=$2 uuid=$3
+
+  call_api -X GET "$(base_uri)/${namespace}s.$(suffix)$([[ -z "${xquery}" ]] || echo ?${xquery})"
+}
+
+function cmd_show() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${uuid}"      ]] || { echo "[ERROR] 'uuid' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  call_api -X GET "$(base_uri)/${namespace}s/${uuid}.$(suffix)"
+}
+
+function cmd_xget() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${uuid}"      ]] || { echo "[ERROR] 'uuid' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  call_api -X GET "$(base_uri)/${namespace}s/${uuid}/${cmd}.$(suffix)"
+}
+
+function cmd_xcreate() {
+  local namespace=$1
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  call_api -X POST ${MUSSEL_CUSTOM_DATA} "$(base_uri)/${namespace}s.$(suffix)"
+}
+
+function cmd_destroy() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${uuid}"      ]] || { echo "[ERROR] 'uuid' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  call_api -X DELETE "$(base_uri)/${namespace}s/${uuid}.$(suffix)"
+}
+
+function cmd_put() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${uuid}"      ]] || { echo "[ERROR] 'uuid' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  call_api -X PUT $(base_uri)/${namespace}s/${uuid}/${cmd}.$(suffix)
+}
+
+function cmd_help() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  echo "$0 ${namespace} [help|${cmd}]" >&2
+}
+
+function cmd_default() {
+  local namespace=$1 cmd=$2 uuid=$3
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  [[ $# = 1 ]] && cmd_index $* || $0 ${namespace} help
+}
+
+## tasklet
+
+function invoke_task() {
+  local namespace=$1 cmd=$2
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  declare -f task_${cmd} >/dev/null || { echo "[ERROR] undefined task: 'task_${cmd}' (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  eval task_${cmd} $*
+}
+
+task_help() {
+  cmd_help ${namespace} "$(echo $(declare -f | egrep ^task_ | egrep -v 'task_help|task_default' | sed 's,^task_,,; s,(,,; s,),,;') | sort | sed 's, ,|,g')"
+}
+
+## controller
+
+function run_cmd() {
+  local namespace=$1 cmd=$2
+  [[ -n "${namespace}" ]] || { echo "[ERROR] 'namespace' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  [[ -n "${cmd}"       ]] || { echo "[ERROR] 'cmd' is empty (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  local namespace_path=${BASH_SOURCE[0]%/*}/v${DCMGR_API_VERSION}.d/${namespace}.sh
+  [[ -f "${namespace_path}" ]] || {
+    echo "[ERROR] no such namespace '${namespace}'" >&2
+    return 1
+  }
+
+  . ${namespace_path}
+  invoke_task $*
+}
+
+function load_musselrc() {
+  # system wide
+  MUSSEL_RC_SYSTEM=${MUSSEL_RC_SYSTEM:-/etc/wakame-vdc/musselrc}
+  if [[ -f ${MUSSEL_RC_SYSTEM} ]]; then
+    . ${MUSSEL_RC_SYSTEM}
+  fi
+
+  MUSSEL_RC=${MUSSEL_RC:-${HOME}/.musselrc}
+  if [[ -f "${MUSSEL_RC}" ]]; then
+    . ${MUSSEL_RC}
+  fi
+}

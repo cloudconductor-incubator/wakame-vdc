@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+
+require 'dcmgr/rubygems'
+require 'dcmgr'
+require 'isono'
+require 'fuguta'
+require 'socket'
+
+include Isono::Runner::RpcServer
+
+Dcmgr::Configurations.load Dcmgr::Configurations::Hva
+Dcmgr.run_initializers('logger')
+
+manifest = DEFAULT_MANIFEST.dup
+manifest.instance_eval do
+  node_name 'hva'
+  node_instance_id "#{Socket.gethostname}"
+
+  load_module Isono::NodeModules::NodeHeartbeat
+  load_module Dcmgr::NodeModules::InstanceMonitor
+  load_module Dcmgr::NodeModules::AlarmConfigUpdater
+
+  case Dcmgr::Configurations.hva.edge_networking
+  when 'openflow'
+    load_module Dcmgr::NodeModules::DebugOpenFlow
+    load_module Dcmgr::NodeModules::ServiceOpenFlow
+  when 'netfilter'
+    load_module Dcmgr::NodeModules::ServiceNetfilter
+  when 'off'
+    # Don't load openflow nor netfilter
+  when 'openvnet'
+    # Do not do anything, or something might be added...
+  end
+end
+
+Isono.at_disconnected do
+  EM.stop { exit }
+end
+
+start(manifest) do
+  endpoint "windows-handle.#{@node.node_id}", Dcmgr::Rpc::WindowsHandler
+  endpoint "hva-handle.#{@node.node_id}", Dcmgr::Rpc::HvaHandler
+  endpoint "local-store-handle.#{@node.node_id}", Dcmgr::Rpc::LocalStoreHandler
+  endpoint "migration-handle.#{@node.node_id}", Dcmgr::Rpc::MigrationHandler
+end

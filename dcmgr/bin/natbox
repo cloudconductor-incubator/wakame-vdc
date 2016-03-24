@@ -1,0 +1,34 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+
+require 'dcmgr/rubygems'
+require 'dcmgr'
+require 'isono'
+require 'socket'
+require 'fuguta'
+
+include Isono::Runner::RpcServer
+
+
+Dcmgr::Configurations.load Dcmgr::Configurations::Natbox
+
+Dcmgr.run_initializers('logger')
+
+manifest = DEFAULT_MANIFEST.dup
+manifest.instance_eval do
+  node_name 'natbox'
+  node_instance_id "#{Socket.gethostname}"
+
+  load_module Isono::NodeModules::NodeHeartbeat
+  load_module Dcmgr::NodeModules::ServiceNatbox
+end
+
+Isono.at_disconnected do
+  EM.stop { exit }
+end
+
+start(manifest) do
+  endpoint "natbox-handle.#{@node.node_id}", Dcmgr::Rpc::NatboxHandler
+end

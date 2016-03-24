@@ -1,0 +1,57 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Style-Type" content="text/css" />
+<meta name="description" content="<%= @site[:meta][:description] %>">
+<title><%= @site[:title] %></title>
+<%= stylesheet_link_tag :all %>
+<%= yield :stylesheet %>
+<%= javascript_include_tag 'jquery-1.4.2.min.js' %>
+<%= javascript_include_tag 'jquery.i18n.properties-min.js' %>
+<%= javascript_include_tag 'jsdeferred.jquery.js' %>
+<%= javascript_include_tag 'jquery.tmpl.js' %>
+<%= javascript_include_tag 'jquery.loadmask.min.js' %>
+<%= javascript_include_tag 'jquery-ui-1.8.4.custom.min.js' %>
+<%= javascript_include_tag 'jquery.easing.1.3.js' %>
+<%= javascript_include_tag 'jquery.validate.min.js' %>
+<%= javascript_include_tag 'sexyalertbox.v1.2.jquery.js' %>
+<%= javascript_include_tag 'ui.selectmenu.js' %>
+<%= javascript_include_tag 'date.js' %>
+<%= javascript_include_tag 'timezone-js-jquery.js' %>
+<%= javascript_include_tag 'sprintf-0.7-beta1.js' %>
+<%= javascript_include_tag 'underscore-min.js' %>
+<%= javascript_include_tag 'dcmgr_gui/core.js' %>
+<%= javascript_include_tag 'dcmgr_gui/application.js' %>
+<script type="text/javascript">
+  jQuery(function($){
+    $.i18n.properties({
+        name:'Messages',
+        path:'/i18n/',
+        mode:'both',
+        language: '<%= I18n.locale %>'
+    });
+    dcmgrGUI.setConfig('time_zone', '<%= @current_user.time_zone %>');
+    dcmgrGUI.setConfig('time_zone_utc_offset', <%= ActiveSupport::TimeZone[@current_user.time_zone].utc_offset %>); 
+    timezoneJS.timezone.zoneFileBasePath = '/tz';
+    timezoneJS.timezone.loadingScheme = timezoneJS.timezone.loadingSchemes.LAZY_LOAD
+    timezoneJS.timezone.init();
+  });
+</script>
+<%= yield :javascript %>
+<%= csrf_meta_tag %>
+<link rel="shortcut icon" href="favicon.ico" />
+</head>
+<body>
+	<div id="head_gradation"></div>
+	<div id="content_wrapper">
+		<%= render :partial => 'layouts/header' %>
+		<div id="content" class="clearfix">
+			<%= render :partial => 'layouts/sidemenu' %>
+			<%= yield %>
+		</div>
+		<%= render :partial => 'layouts/footer'%>
+	</div>
+<%= yield :javascript_template %>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<div id="create_and_edit_ssh_keypair_dialog">
+  <table>
+    <%- if @uuid -%>
+    <tr>
+      <td><%= t("dialog.create_and_edit_ssh_keypair.uuid")%>: </td>
+      <td><%= @uuid %></td>
+      <td><input type="hidden" id="ssh_keypair_id" value="<%= @uuid %>"></td>
+    </tr>
+    <%- end -%>
+    <tr>
+      <td id="display_name"><%= t("dialog.create_and_edit_ssh_keypair.display_name")%>: </td>
+      <td><input id="ssh_keypair_display_name" type="text" size=43 value="<%= @display_name %>"></td>
+    </tr>
+    <tr>
+      <td id="description"><%= t("dialog.create_and_edit_ssh_keypair.description")%>: </td>
+      <td><input id="ssh_keypair_description" type="text" size= 43 value="<%= @description %>"></td>
+    </tr>
+    <% if(action_name == 'create_ssh_keypair') %>
+    <tr>
+      <td id="public_key"><%= t("dialog.create_and_edit_ssh_keypair.public_key")%>: </td>
+      <td><textarea id="ssh_public_key"></textarea></td>
+    </tr>
+    <% end %>
+  </table>
+</div>

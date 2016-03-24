@@ -1,0 +1,47 @@
+<% content_for :javascript do %>
+<%= javascript_include_tag 'dcmgr_gui/account_panel.js' %>
+<script type="text/javascript">
+jQuery(function($){
+  dcmgrGUI.accountPanel();
+  DcmgrGUI.Util.utcToLocal('#last_login_at');
+});
+</script>
+<% end %>
+<style type="text/css">
+	.ui-dialog .ui-dialog-buttonpane .ui-dialog-buttonset { text-align:center; float: none;}
+</style>
+<div id="mainarea_wide">
+	<h3><img src="images/icon_resource.gif" /><%= t("accounts.header") %></h3>
+  <div class="maincontent account">
+    <div id="account_top">
+      <div id="account_password"><%= link_to t("accounts.password.header"), :action => 'password' %></a></div>
+      <div id="account_information">
+        <blockquote>
+          <h4><%= t("accounts.top.information") %></h4>
+          <hr />
+          <p><%= t("accounts.top.last_login") %>: <span id="last_login_at"><%= ((@current_user.nil? || @current_user.last_login_at.nil?) ? '-' : @current_user.last_login_at.utc.iso8601) %></span></p>
+        </blockquote>
+      </div><!-- account_information -->
+      <div id="account_settings">
+      <% form_for :account, :url=>{:action => 'update_settings'}, :html => {:id => "settings_form"} do |f| %>
+        <blockquote>
+        <h4><%= t("accounts.top.settings") %></h4>
+        <hr />
+        <div id="account_top_timezone">
+        <span><%= t("accounts.top.timezone") %></span><%= f.time_zone_select( :time_zone,
+							  nil,
+							  :model => TZInfo::Timezone,
+							  :default => @current_user.time_zone) %>
+        </div>
+        <div id="account_top_locale">
+        <span><%= t("accounts.top.locale") %></span>
+        <%= f.select(:locale, @locales, :selected => session[:locale], :selected => @current_user.locale) %>
+        </div>
+        <p id="account_submit"><%= f.submit t("accounts.top.submit") %></p>
+      <% end %>
+      </blockquote>
+      </div><!-- account_settings -->
+    </div><!-- account_top -->
+  </div><!-- maincontent -->
+  <div id="btm_maincontent_wide_last"></div>
+</div><!-- mainarea_wide -->

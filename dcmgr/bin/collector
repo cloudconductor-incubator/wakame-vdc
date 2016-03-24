@@ -1,0 +1,45 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+
+require 'dcmgr/rubygems'
+require 'dcmgr'
+require 'isono'
+
+Dcmgr::Configurations.load Dcmgr::Configurations::Dcmgr
+
+Dcmgr.run_initializers('logger',
+                       'sequel',
+                       'isono_messaging',
+                       'sequel_class_method_hook')
+
+conf = Dcmgr::Configurations.dcmgr
+
+manifest = Isono::Runner::RpcServer::DEFAULT_MANIFEST.dup
+manifest.instance_eval do
+  node_name 'collector'
+  node_instance_id 'master'
+
+  load_module Isono::NodeModules::DataStore
+  load_module Isono::NodeModules::NodeCollector
+  load_module Isono::NodeModules::JobCollector
+  load_module Dcmgr::NodeModules::HvaCollector
+  load_module Dcmgr::NodeModules::StaCollector
+  load_module Dcmgr::NodeModules::NatboxCollector
+  load_module Dcmgr::NodeModules::AlarmCollector
+  load_module Dcmgr::NodeModules::Scheduler
+  load_module Dcmgr::NodeModules::Maintenance
+  load_module Dcmgr::NodeModules::EventHook
+  load_module Dcmgr::NodeModules::JobQueueProxy
+
+  if conf.features.openvnet
+    load_module Dcmgr::NodeModules::VnetCollector
+  end
+end
+
+Isono.at_disconnected do
+  EM.stop { exit }
+end
+
+Isono::Runner::RpcServer.start(manifest)

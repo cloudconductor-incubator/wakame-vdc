@@ -1,0 +1,11 @@
+wakame-vdc (11.12ubuntu1) precise; urgency=low
+
+  * Upgrade distribution release.
+
+ -- Masahiro Fujiwara <m-fujiwara@axsh.net>  Wed, 16 May 2012 14:47:24 +0900
+
+wakame-vdc (11.12) unstable; urgency=low
+
+  * Initial Release.
+
+ -- Axsh Co. LTD <dev@axsh.net>  Tue, 05 Jul 2011 17:26:21 +0900

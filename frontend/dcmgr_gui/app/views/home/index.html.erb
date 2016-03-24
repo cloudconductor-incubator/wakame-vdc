@@ -1,0 +1,66 @@
+<% content_for :javascript do %>
+<%= javascript_include_tag 'dcmgr_gui/dashboard_panel.js' %>
+<script type="text/javascript">
+jQuery(function($){
+	dcmgrGUI.dashboardPanel();
+});
+</script>
+<% end %>
+<div id="mainarea" class="grid2">
+	<h3><img src="images/icon_resource.gif" /><%= t("dashboard.resource.header") %></h3>
+	<div class="maincontent">
+		<p class="lead"><%= t("dashboard.resource.message") %></p>
+		<p><a href="javascript:void(0);" class="refresh"><%= t('button.refresh') %></a></p>
+		<ul class="resource clearfix">
+			<li>
+				<img src="images/icon_resource01.gif" width="20" height="20" /><a href="/instances">
+				<span id="total_instance">0</span> <%= t("dashboard.resource.instance") %></a>
+			</li>
+			<li>
+				<img src="images/icon_resource02.gif" width="20" height="20" /><a href="/machine_images">
+				<span id="total_image">0</span> <%= t("dashboard.resource.machine_images") %></a>
+				</li>
+		</ul>
+		<ul class="resource clearfix">
+			<li>
+				<img src="images/icon_resource03.gif" width="20" height="20" /><a href="/volumes">
+				<span id="total_volume">0</span> <%= t("dashboard.resource.volumes") %></a>
+				</li>
+			<li>
+				<img src="images/icon_resource03.gif" width="20" height="20" /><a href="/backups">
+				<span id="total_backup">0</span> <%= t("dashboard.resource.backups") %></a>
+			</li>
+		</ul>
+		<ul class="resource clearfix">
+			<li>
+				<img src="images/icon_resource04.gif" width="20" height="20" /><a href="/networks">
+				<span id="total_network">0</span> <%= t("dashboard.resource.networks") %></a>
+			</li>
+			<li>
+				<img src="images/icon_resource04.gif" width="20" height="20" /><a href="/security_groups">
+				<span id="total_security_group">0</span> <%= t("dashboard.resource.security_groups") %></a>
+			</li>
+			<li>
+				<img src="images/icon_resource04.gif" width="20" height="20" /><a href="/keypairs">
+				<span id="total_keypair">0</span> <%= t("dashboard.resource.key_pairs") %></a>
+			</li>
+			<li>
+				<img src="images/icon_appliance.gif" width="20" height="20" /><a href="/load_balancers">
+				<span id="total_load_balancer">0</span> <%= t("dashboard.resource.load_balancers") %></a>
+			</li>
+
+		</ul>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+		<div class="spacer20"></div>
+	</div>
+  <div class="btm_maincontent mbt10"></div>
+  <%= render :partial => 'layouts/notifications'%>
+
+	<div class="btm_maincontent mbt10"></div>
+</div>

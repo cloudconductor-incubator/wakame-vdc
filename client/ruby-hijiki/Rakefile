@@ -1,0 +1,25 @@
+require 'rubygems'
+require 'rubygems/package_task'
+
+spec = Gem::Specification.load('ruby-hijiki.gemspec')
+
+desc "Build ruby-hijiki, then run tests."
+task :default => [:package]
+
+desc 'Generate documentation'
+begin
+  require 'yard'
+  YARD::Rake::YardocTask.new do |t|
+    t.files   = ['lib/**/*.rb', '-', 'docs/*.md']
+  end
+rescue LoadError
+  task :yard do puts "Please install yard first!"; end
+end
+
+task :test do
+  sh %{cd test && ruby ts_all.rb}
+end
+
+Gem::PackageTask.new(spec) do |pkg|
+  pkg.need_tar = true
+end
