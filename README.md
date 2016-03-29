@@ -7,6 +7,8 @@ Wakame-vdc is a virtual datacenter or an IaaS (Infrastructure as a Service) suit
 
 Visit http://wakame-vdc.org for a more detailed explanation.
 
+Currently development is continued in [this repository](https://github.com/axsh/wakame-vdc).
+
 System requirements
 -------------------
 
